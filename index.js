@@ -40,10 +40,13 @@ const requestListener = (request, response) => {
     okHandle(response, data);
   } else if (request.url.startsWith("/todos/") && request.method === "DELETE") {
     const arr = request.url.split('/');
+
     if (arr.length != 3) {
       errHandle(response);
     } else {
-      const id = data.findIndex(item => item.id === arr.pop())
+      const index = arr.pop()
+      const id = data.findIndex(item => item.id === index)
+
       if (id !== -1) {
         data.splice(id, 1);
         okHandle(response, data);
@@ -56,7 +59,9 @@ const requestListener = (request, response) => {
     if (arr.length != 3) {
       errHandle(response);
     } else {
-      const id = data.findIndex(item => item.id === arr.pop())
+      const index = arr.pop()
+      const id = data.findIndex(item => item.id === index)
+
       if (id !== -1) {
         request.on('end', () => {
           try {
