@@ -1,144 +1,88 @@
-// npm 內建的模組
-const http = require('http')
-// 外部套件
-const { v4: uuidv4 } = require('uuid')
-// 自己寫的錯誤處理模組
-const errHandle = require('./errorHandle')
+const http = require("http");
+const { v4: uuidv4 } = require("uuid");
 
-let todos = []
+const { errHandle, okHandle } = require("./responseHandle");
 
-const requestListener = (req, res) => {
-  const reqUrl = req.url
-  const reqMethod = req.method
-  const headers = {
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Length, X-Requested-With',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'PATCH, POST, GET, OPTIONS, DELETE',
-   'Content-Type': 'application/json'
- }
+let data = [];
 
-  // console.log(reqUrl);
-  // console.log(reqMethod);
+const requestListener = (request, response) => {
+    const headers = {
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Length, X-Requested-With',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'PATCH, POST, GET, OPTIONS, DELETE',
+        'Content-Type': 'application/json'
+    };
 
-  let body = ''
+    let rawData = '';
+    request.on('data', (chunk) => { rawData += chunk; });
 
-  req.on('data', chunk => {
-    body += chunk
-  });
-
-  if (reqUrl === '/' && reqMethod === 'GET') {
-    res.writeHead(200, headers);
-    res.write(JSON.stringify({
-      status: 'success',
-      data: []
-    }));
-    res.end();
-
-  } else if (reqUrl === '/todos' && reqMethod === 'GET') { // 查詢
-      res.writeHead(200, headers);
-      res.write(JSON.stringify({
-        status: 'success',
-        data: todos
-      }));
-      res.end();
-  } else if (reqUrl === '/todos' && reqMethod === 'POST') { // 新增
-    req.on('end', ()=> {
-      try {
-        const title = JSON.parse(body).title
-        console.log(title)
-
-        if (title !== undefined) {
-          const todo = {
-            title: title,
-            id: uuidv4()
-          }
-          todos.push(todo);
-    
-          res.writeHead(200, headers);
-          res.write(JSON.stringify({
-            status: 'success',
-            data: todos
-          }))
-          res.end();
+    if (request.url === "/todos" && request.method === "GET") {
+        okHandle(response, data);
+    } else if (request.url === "/todos" && request.method === "POST") {
+        request.on('end', () => {
+            try {
+                const { title } = JSON.parse(rawData);
+                if (title) {
+                    data.push({
+                        title: title,
+                        id: uuidv4()
+                    })
+                    okHandle(response, data);
+                } else {
+                    errHandle(response);
+                }
+            } catch (e) {
+                errHandle(response);
+            }
+        });
+    } else if (request.url === "/todos" && request.method === "DELETE") {
+        data.length = 0;
+        okHandle(response, data);
+    } else if (request.url.startsWith("/todos/") && request.method === "DELETE") {
+        const arr = request.url.split('/');
+        if (arr.length != 3) {
+            errHandle(response);
         } else {
-          errHandle(res);
+            const id = data.findIndex(item => item.id === arr.pop())
+            if (id !== -1) {
+                data.splice(id, 1);
+                okHandle(response, data);
+            }
+            else
+                errHandle(response);
         }
-      } catch (error) {
-        errHandle(res);
-      }
-    })
-  } else if (reqUrl === '/todos' && reqMethod === 'DELETE') { // 刪除所有
-    res.writeHead(200, headers);
-    todos.length = 0
-    res.write(JSON.stringify({
-      status: 'success',
-      data: todos,
-      message: '刪除成功'
-    }))
-    res.end();
-  } else if (reqUrl.startsWith('/todos/') && reqMethod === 'DELETE') { // 刪除單筆
-    let id = reqUrl.split('/').pop();
-    // console.log(id);
-    let index = todos.findIndex(item => item.id === id)
-    // console.log(index);
-
-    if (index !== -1) {
-      res.writeHead(200, headers);
-      todos.splice(index, 1)
-
-      res.write(JSON.stringify({
-        status: 'success',
-        data: todos,
-        message: `刪除第${ index }筆成功`
-      }));
-      res.end();
-    } else {
-      errHandle(res);
-    }
-  } else if (reqUrl.startsWith('/todos/') && reqMethod === 'PATCH') { // 編輯單筆
-    let id = reqUrl.split('/').pop();
-    // console.log(id);
-    let index = todos.findIndex(item => item.id === id)
-    console.log(index);
-
-    if (index !== -1) {
-      req.on('end', () => {
-        try {
-          const title = JSON.parse(body).title
-
-          if (title !== undefined) {
-            res.writeHead(200, headers);
-  
-            todos[index].title = title
-            res.write(JSON.stringify({
-              status: 'success',
-              data: todos[index],
-              message: `編輯第${ index }筆成功`
-            }));
-  
-            res.end();
-          } else {
-            errHandle(res);
-          }
-        } catch(error) {
-          errHandle(res);
+    } else if (request.url.startsWith("/todos/") && request.method === "PATCH") {
+        const arr = request.url.split('/');
+        if (arr.length != 3) {
+            errHandle(response);
+        } else {
+            const id = data.findIndex(item => item.id === arr.pop())
+            if (id !== -1) {
+                request.on('end', () => {
+                    try {
+                        const { title } = JSON.parse(rawData);
+                        if (title) {
+                            data[id].title = title;
+                            okHandle(response, data);
+                        } else {
+                            errHandle(response);
+                        }
+                    } catch (e) {
+                        errHandle(response);
+                    }
+                });
+            }
+            else
+                errHandle(response);
         }
-      })
+    } else if (request.url === "/todos" && request.method === "OPTIONS") {
+        okHandle(response, [])
     } else {
-      errHandle(res);
+        response.writeHead(404, headers);
+        response.write('網頁不存在');
+        response.end();
     }
-  } else if (reqMethod === 'OPTIONS') { // 跨網域，會先問你
-    res.writeHead(200, headers);
-    res.end();
-  } else {
-    res.writeHead(401, headers)
-    res.write(JSON.stringify({
-      status: 'fail',
-      message: []
-    }));
-    res.end();
-  }
-}
+};
 
-const server = http.createServer(requestListener)
-server.listen(process.env.PORT || 3005)
+const server = http.createServer(requestListener);
+server.listen(process.env.PORT || 3005);
